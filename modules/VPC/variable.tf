@@ -1,26 +1,20 @@
 
-variable "vpc_name" {
-  type = string
+variable "env" {
+  type        = string
+  description = "What Env we are creating (dev, qa, production)"
 }
 
 variable "vpc_cidr" {
-  type = string
+  type        = string
+  description = "VPC CIDR"
 }
 
-variable "public_subnet_cidrs" {
-  type = list(string)
+variable "subnet_cidr" {
+  type        = string
+  description = "SUBNET CIDR"
 }
 
-variable "private_subnet_cidrs" {
-  type = list(string)
-}
-
-variable "azs" {
-  type = list(string)
-}
-
-variable "tags" {
-  type = map(string)
-
-  default = {}
+variable "subnet_az" {
+  type        = string
+  description = "AZ of the Subnet"
 }

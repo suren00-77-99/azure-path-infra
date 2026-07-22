@@ -6,7 +6,7 @@ pool:
 
 variables:
   terraformVersion: '1.12.2'
-  workingDirectory: 'azure-infra-project/dev-proj'
+  workingDirectory: 'dev-proj'
 
 stages:
 - stage: TerraformPlan

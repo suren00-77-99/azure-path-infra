@@ -36,7 +36,7 @@ locals {
 }
 
 module "VPC" {
-  source = "../../modules/VPC"
+  source = "../../module/VPC"
   vpc_name      = locals.vpc_name
   vpc_cidr      = locals.vpc_cidr
   public_subnet = locals.public_subnet
@@ -46,7 +46,7 @@ module "VPC" {
 }
 
 module "EC2" {
-  source = "../../modules/EC2"
+  source = "../../module/EC2"
   ami             = locals.ami
   instance_type   = locals.instance_type
   subnet_id       = module.vpc.subnet_id
@@ -56,6 +56,6 @@ module "EC2" {
 }
 
 module "S3" {
-  source = "../../modules/S3"
+  source = "../../module/S3"
   bucket_name = locals.bucket_name
 }

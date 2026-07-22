@@ -14,9 +14,14 @@ stages:
   - job: Plan
     steps:
     - checkout: self
-    - task: TerraformInstaller@1
-      inputs:
-        terraformVersion: $(terraformVersion)
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y unzip wget
+        wget https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_linux_amd64.zip
+        unzip terraform_$(TERRAFORM_VERSION)_linux_amd64.zip
+        sudo mv terraform /usr/local/bin/
+        terraform version
+      displayName: "Install Terraform"
     - task: AWSShellScript@1
       inputs:
         awsCredentials: 'Aws-connection'

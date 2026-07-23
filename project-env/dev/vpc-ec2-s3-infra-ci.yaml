@@ -47,7 +47,24 @@ stages:
     - job: TerraformPlan
       displayName: 'Validate and generate execution plan'
       steps:
-
+        - task: AWSShellScript@1
+          displayName: Debug Repository
+          inputs:
+            awsCredentials: 'Aws-connection'
+            regionName: 'ap-south-1'
+            scriptType: inline
+            inlineScript: |
+              echo "Current Directory:"
+              pwd
+              echo "Repository Structure:"
+              ls -R
+              echo "Changing to working directory..."
+              cd $(workingDirectory)
+              pwd
+              echo "Terraform files:"
+              ls -la
+              find . -name "*.tf"
+              
         - task: TerraformInstaller@1
           displayName: 'Install Terraform $(TF_VERSION)'
           inputs:

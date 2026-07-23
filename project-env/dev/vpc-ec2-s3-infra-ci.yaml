@@ -1,155 +1,161 @@
-# azure-pipelines.yml
-# CI/CD pipeline: provisions AWS infrastructure using Terraform
-# Uses the "AWS Toolkit for Azure DevOps" extension's AWS service connection
-# (Project Settings > Service connections > AWS) — no static access keys in YAML
-# or variable groups. The AWSShellScript@1 task injects short-lived credentials
-# into the script's environment for the duration of that step only.
-
 trigger:
   branches:
     include:
-      - main          # runs automatically on every push/merge to main
+      - main
+
   paths:
     include:
-      - 'project-env/dev/*'  # trigger when the dev environment's own files change
-     #- 'modules/*'      # ALSO trigger when the shared module changes — dev consumes it
+      - project-env/dev/*
+      - modules/*
 
 pr:
   branches:
     include:
-      - main          # also run (plan-only) on pull requests targeting main
+      - main
 
 pool:
-  vmImage: 'ubuntu-latest'   # Microsoft-hosted Linux agent
+  vmImage: ubuntu-latest
 
 variables:
-  - name: AWS_SERVICE_CONNECTION
-    value: 'Aws-connection'    # Name of the AWS service connection you created in Project Settings
-  - name: TF_VERSION
-    value: '1.8.5'
-  - name: TF_WORKING_DIR
-    value: 'project/dev'       # <-- points at the folder with main.tf that calls the module
-  - name: TF_STATE_BUCKET
-    value: 'my-terraform-state-bucket'     # S3 backend bucket for remote state
-  - name: TF_STATE_KEY
-    value: 'project/dev/terraform.tfstate' # <-- gave dev its own state path/key
-  - name: TF_STATE_REGION
-    value: 'ap-south-1'
+- name: AWS_SERVICE_CONNECTION
+  value: Aws-connection
+- name: TF_VERSION
+  value: '1.8.5'
+- name: TF_WORKING_DIR
+  value: project-env/dev
+- name: TF_STATE_BUCKET
+  value: suren2345
+- name: TF_STATE_KEY
+  value: project-env/dev/terraform.tfstate
+- name: TF_STATE_REGION
+  value: ap-south-1
 
 stages:
-
-# -------------------------------------------------------------------
-# STAGE 1: Validate & Plan  (runs on every PR and every push)
-# -------------------------------------------------------------------
+########################################################
+# Terraform Plan
+########################################################
 - stage: Plan
-  displayName: 'Terraform Validate & Plan'
+  displayName: Terraform Plan
   jobs:
-    - job: TerraformPlan
-      displayName: 'Validate and generate execution plan'
-      steps:
-        - task: AWSShellScript@1
-          displayName: Debug Repository
-          inputs:
-            awsCredentials: 'Aws-connection'
-            regionName: 'ap-south-1'
-            scriptType: inline
-            inlineScript: |
-              echo "Current Directory:"
-              pwd
-              echo "Repository Structure:"
-              ls -R
-              echo "Changing to working directory..."
-              cd $(workingDirectory)
-              pwd
-              echo "Terraform files:"
-              ls -la
-              find . -name "*.tf"
+  - job: TerraformPlan
+    displayName: Terraform Plan
+    steps:
+    - checkout: self
+    - task: TerraformInstaller@1
+      displayName: Install Terraform
+      inputs:
+        terraformVersion: $(TF_VERSION)
+    - task: AWSShellScript@1
+      displayName: Debug Repository
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(TF_STATE_REGION)
+        scriptType: inline
+        inlineScript: |
+          echo "Current Directory"
+          pwd
+          echo "Repository Structure"
+          ls -R
+          echo "Move to Terraform Directory"
+          cd $(TF_WORKING_DIR)
+          pwd
+          echo "Terraform Files"
+          find . -name "*.tf"
+          echo "Modules"
+          ls ../../modules
 
-        - task: TerraformInstaller@1
-          displayName: 'Install Terraform $(TF_VERSION)'
-          inputs:
-            terraformVersion: '$(TF_VERSION)'
+    - task: AWSShellScript@1
+      displayName: Terraform Init
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(TF_STATE_REGION)
+        scriptType: inline
+        inlineScript: |
+          cd $(TF_WORKING_DIR)
+          terraform init -reconfigure \
+            -backend-config="bucket=$(TF_STATE_BUCKET)" \
+            -backend-config="key=$(TF_STATE_KEY)" \
+            -backend-config="region=$(TF_STATE_REGION)"
 
-        - task: AWSShellScript@1
-          displayName: 'Terraform Init (configure S3 remote backend)'
-          inputs:
-            awsCredentials: '$(AWS_SERVICE_CONNECTION)'   # AWS Toolkit injects temp credentials for this step only
-            regionName: '$(TF_STATE_REGION)'
-            scriptType: 'inline'
-            inlineScript: |
-              cd $(TF_WORKING_DIR)
-              terraform init \
-                -backend-config="bucket=$(TF_STATE_BUCKET)" \
-                -backend-config="key=$(TF_STATE_KEY)" \
-                -backend-config="region=$(TF_STATE_REGION)"
+    - script: |
+        cd $(TF_WORKING_DIR)
+        terraform fmt -check
+        terraform validate
+      displayName: Terraform Validate
 
-        - script: |
-            cd $(TF_WORKING_DIR)
-            terraform fmt -check
-            terraform validate
-          displayName: 'Terraform Format Check & Validate'
-          # No AWS credentials needed here — fmt/validate never call the AWS API.
+    - task: AWSShellScript@1
+      displayName: Terraform Plan
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(TF_STATE_REGION)
+        scriptType: inline
+        inlineScript: |
+          cd $(TF_WORKING_DIR)
+          terraform plan -out=tfplan -input=false
 
-        - task: AWSShellScript@1
-          displayName: 'Terraform Plan'
-          inputs:
-            awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-            regionName: '$(TF_STATE_REGION)'
-            scriptType: 'inline'
-            inlineScript: |
-              cd $(TF_WORKING_DIR)
-              terraform plan -out=tfplan -input=false
+    - task: PublishPipelineArtifact@1
+      displayName: Publish Plan
+      inputs:
+        targetPath: $(TF_WORKING_DIR)/tfplan
+        artifact: tfplan
 
-        - task: PublishPipelineArtifact@1
-          displayName: 'Publish tfplan artifact'
-          inputs:
-            targetPath: '$(TF_WORKING_DIR)/tfplan'
-            artifact: 'tfplan'
+########################################################
+# Manual Approval
+########################################################
 
-# -------------------------------------------------------------------
-# STAGE 2: Apply  (only runs on main branch, after manual approval)
-# -------------------------------------------------------------------
-- stage: Apply
-  displayName: 'Terraform Apply'
+- stage: Approval
+  displayName: Manual Approval
   dependsOn: Plan
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
-    - deployment: TerraformApply
-      displayName: 'Apply infrastructure changes to AWS'
-      environment: 'production'   # <-- ties to an Azure DevOps Environment with approval gates
-      strategy:
-        runOnce:
-          deploy:
-            steps:
+  - job: WaitForApproval
+    pool: server
+    steps:
+    - task: ManualValidation@0
+      timeoutInMinutes: 1440
+      inputs:
+        instructions: |
+          Please review the Terraform Plan.
+          Click Resume to continue.
+        onTimeout: reject
 
-              - task: TerraformInstaller@1
-                displayName: 'Install Terraform $(TF_VERSION)'
-                inputs:
-                  terraformVersion: '$(TF_VERSION)'
+########################################################
+# Terraform Apply
+########################################################
 
-              - task: AWSShellScript@1
-                displayName: 'Terraform Init (apply job)'
-                inputs:
-                  awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-                  regionName: '$(TF_STATE_REGION)'
-                  scriptType: 'inline'
-                  inlineScript: |
-                    cd $(TF_WORKING_DIR)
-                    terraform init \
-                      -backend-config="bucket=$(TF_STATE_BUCKET)" \
-                      -backend-config="key=$(TF_STATE_KEY)" \
-                      -backend-config="region=$(TF_STATE_REGION)"
+- stage: Apply
+  displayName: Terraform Apply
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - job: TerraformApply
+    steps:
+    - checkout: self
+    - download: current
+      artifact: tfplan
+    - task: TerraformInstaller@1
+      displayName: Install Terraform
+      inputs:
+        terraformVersion: $(TF_VERSION)
 
-              - download: current
-                artifact: 'tfplan'
-                displayName: 'Download tfplan artifact from Plan stage'
+    - task: AWSShellScript@1
+      displayName: Terraform Init
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(TF_STATE_REGION)
+        scriptType: inline
+        inlineScript: |
+          cd $(TF_WORKING_DIR)
+          terraform init -reconfigure \
+            -backend-config="bucket=$(TF_STATE_BUCKET)" \
+            -backend-config="key=$(TF_STATE_KEY)" \
+            -backend-config="region=$(TF_STATE_REGION)"
 
-              - task: AWSShellScript@1
-                displayName: 'Terraform Apply (using saved plan)'
-                inputs:
-                  awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-                  regionName: '$(TF_STATE_REGION)'
-                  scriptType: 'inline'
-                  inlineScript: |
-                    cd $(TF_WORKING_DIR)
-                    terraform apply -input=false -auto-approve $(Pipeline.Workspace)/tfplan/tfplan
+    - task: AWSShellScript@1
+      displayName: Terraform Apply
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(TF_STATE_REGION)
+        scriptType: inline
+        inlineScript: |
+          cd $(TF_WORKING_DIR)
+          terraform apply -auto-approve $(Pipeline.Workspace)/tfplan/tfplan

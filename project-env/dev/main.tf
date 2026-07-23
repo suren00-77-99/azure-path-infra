@@ -29,8 +29,8 @@ module "VPC" {
 
   vpc_cidr    = "10.0.0.0/16"
   subnet_cidr = "10.0.1.0/24"
-  subnet_az   = "${locals.region}a"
-  env         = locals.env
+  subnet_az   = "${local.region}a"
+  env         = local.env
 }
 
 module "EC2" {
@@ -40,11 +40,11 @@ module "EC2" {
   instance_type = "t3.micro"
   subnet_id     = module.VPC.subnet_id
   ec2_count     = 1
-  env           = locals.env
+  env           = local.env
 }
 
 module "S3" {
   source = "../../modules/S3"
 
-  bucket_name = locals.bucket_name
+  bucket_name = local.bucket_name
 }

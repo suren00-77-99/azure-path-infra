@@ -24,7 +24,7 @@ locals {
 }
 
 module "VPC" {
-  source        = "../modules/VPC"
+  source        = "./modules/VPC"
   vpc_cidr      = "10.0.0.0/16"
   subnet_cidr   = "10.0.1.0/24"
   subnet_az     = "${locals.region}a"          # ap-south-1a
@@ -32,7 +32,7 @@ module "VPC" {
 }
 
 module "EC2" {
-  source            = "../modules/EC2"
+  source            = "./modules/EC2"
   ami_id            = "ami-01a00762f46d584a1"
   instance_type     = "t3.micro"
   subnet_id         = module.VPC.subnet_id
@@ -41,6 +41,6 @@ module "EC2" {
 }
 
 module "S3" {
-    source = "../modules/S3"
+    source = "./modules/S3"
     bucket-name    = local.bucket-name
 }

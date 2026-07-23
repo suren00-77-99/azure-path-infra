@@ -11,7 +11,7 @@ trigger:
       - main          # runs automatically on every push/merge to main
   paths:
     include:
-      - 'project/dev/*'  # trigger when the dev environment's own files change
+      - 'project-env/dev/*'  # trigger when the dev environment's own files change
      #- 'modules/*'      # ALSO trigger when the shared module changes — dev consumes it
 
 pr:
@@ -64,7 +64,7 @@ stages:
               echo "Terraform files:"
               ls -la
               find . -name "*.tf"
-              
+
         - task: TerraformInstaller@1
           displayName: 'Install Terraform $(TF_VERSION)'
           inputs:
